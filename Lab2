@@ -1,0 +1,92 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.stats import chi2, kstest, norm
+
+# Универсальный генератор (формула 1.12)
+def universal_generator(n, 
+                        a=[1176, 1476, 1776], 
+                        b=[8191, 131071, 8388607], 
+                        c=[123, 321, 231], 
+                        y0=[100, 200, 300]):
+    k = len(a)
+    y = np.zeros((k, n+1), dtype=int)
+    for i in range(k):
+        y[i, 0] = y0[i]
+    for j in range(n):
+        for i in range(k):
+            y[i, j+1] = abs(a[i] * (y[i, j] % b[i]) - (c[i] * y[i, j]) // b[i])
+    u = ((y[0,1:]/b[0]) + (y[1,1:]/b[1]) + (y[2,1:]/b[2])) % 1
+    return u
+
+# Параметры
+N = 500
+m = 16
+sample = universal_generator(N)
+
+# --- Характеристики ---
+mean = np.mean(sample)
+var = np.var(sample)
+moment2_central = np.mean((sample - mean)**2)   # то же, что дисперсия
+moment3_central = np.mean((sample - mean)**3)
+
+print("Оценка математического ожидания:", mean)
+print("Оценка дисперсии:", var)
+print("Второй центральный момент:", moment2_central)
+print("Третий центральный момент:", moment3_central)
+
+# --- Гистограмма частот ---
+counts, bins = np.histogram(sample, bins=m, range=(0,1))
+rel_freq = counts / N                  # относительные частоты
+stat_func = np.cumsum(rel_freq)        # накопленные частоты
+
+print("\nДанные гистограммы (m =", m, "интервалов):")
+for i in range(m):
+    print(f"Интервал [{bins[i]:.2f}, {bins[i+1]:.2f}) "
+          f"частота = {counts[i]}, относительная = {rel_freq[i]:.4f}")
+
+plt.hist(sample, bins=m, edgecolor='black', density=True)
+plt.title("Гистограмма частот")
+plt.xlabel("Интервал")
+plt.ylabel("Частота")
+plt.show()
+
+# --- Статистическая функция распределения ---
+plt.step(bins[1:], stat_func, where='post')
+plt.title("Статистическая функция распределения")
+plt.xlabel("Значение случайной величины")
+plt.ylabel("Вероятность")
+plt.show()
+
+# --- Критерий Пирсона ---
+expected = N / m
+chi2_stat = np.sum((counts - expected)**2 / expected)
+chi2_crit = chi2.ppf(0.95, df=m-1)
+
+print("\nКритерий Пирсона:")
+print("Статистика χ² =", chi2_stat)
+print("Критическое значение =", chi2_crit)
+print("Гипотеза о равномерности", "принимается" if chi2_stat < chi2_crit else "отвергается")
+
+# --- Критерий Колмогорова ---
+D, p_value = kstest(sample, 'uniform', args=(0,1))
+print("\nКритерий Колмогорова-Смирнова:")
+print("Статистика D =", D)
+print("p-value =", p_value)
+print("Гипотеза о равномерности", "принимается" if p_value > 0.05 else "отвергается")
+
+# --- Критерий числа серий ---
+sequence = (sample >= 0.25).astype(int)
+runs = 1 + np.sum(sequence[1:] != sequence[:-1])
+n1 = np.sum(sequence == 1)
+n2 = np.sum(sequence == 0)
+
+ER = 1 + (2 * n1 * n2) / (n1 + n2)
+VR = (2 * n1 * n2 * (2 * n1 * n2 - n1 - n2)) / (((n1 + n2)**2) * (n1 + n2 - 1))
+Z = (runs - ER) / np.sqrt(VR)
+
+print("\nКритерий числа серий (p=0.25):")
+print("Число серий =", runs)
+print("Мат. ожидание ER =", ER)
+print("Дисперсия VR =", VR)
+print("Z =", Z)
+print("Гипотеза о случайности", "принимается" if abs(Z) < norm.ppf(0.975) else "отвергается")
